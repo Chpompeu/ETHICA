@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>AME-IA - Questionário Dinâmico</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+	<script src="https://www.gstatic.com/charts/loader.js"></script>
+	<style>
+		:root { --bg:#0b1020; --card:#121935; --text:#e7ecff; --muted:#9fb0ff; --accent:#6ea8fe; --ok:#6ee7a8; --warn:#ffd166; --bad:#ff6b6b; }
+		* { box-sizing: border-box; }
+		body { margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial; background: var(--bg); color: var(--text); }
+		.container { max-width: 980px; margin: 24px auto; padding: 0 16px; }
+		.header { margin: 12px 0 20px; }
+		.h1 { font-size: 26px; font-weight: 700; letter-spacing: 0.2px; }
+		.card { background: var(--card); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+		.row { display: flex; gap: 12px; flex-wrap: wrap; }
+		.col { flex: 1 1 240px; }
+		.label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+		.input, select { width: 100%; padding: 10px 12px; background: #0e1530; color: var(--text); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; }
+		.section-title { font-weight: 600; font-size: 16px; margin: 8px 0 10px; }
+		details { background: #0f1733; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 10px; }
+		details summary { cursor: pointer; list-style: none; padding: 12px 14px; font-weight: 600; }
+		details .content { padding: 12px 14px; border-top: 1px solid rgba(255,255,255,0.06); }
+		table { width: 100%; border-collapse: collapse; }
+		th, td { border-bottom: 1px dashed rgba(255,255,255,0.06); padding: 8px; text-align: left; font-size: 13px; vertical-align: top; }
+		th.scale, td.scale { text-align: center; }
+		.actions { display: flex; gap: 10px; margin-top: 12px; }
+		button { background: var(--accent); color: #07132e; border: none; padding: 10px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; }
+		button.secondary { background: transparent; color: var(--text); border: 1px solid rgba(255,255,255,0.12); }
+		.muted { color: var(--muted); font-size: 13px; }
+		.badge { padding: 4px 8px; border-radius: 999px; font-size: 12px; background: #0c1b3d; color: var(--muted); border: 1px solid rgba(255,255,255,0.08); }
+		.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+		.grid > .span-6 { grid-column: span 6; }
+		.grid > .span-12 { grid-column: span 12; }
+		.hidden { display: none !important; }
+		.hr { height: 1px; background: rgba(255,255,255,0.08); margin: 12px 0; }
+		.link { color: var(--accent); text-decoration: none; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<div class="h1">AME-IA — Questionário e Diagnóstico</div>
+			<div class="muted">Instrumento baseado no Modelo Contextual de Governança Ética em IA.</div>
+		</div>
+
+		<div class="card" id="formCard">
+			<div class="section-title">Identificação</div>
+			<div class="row">
+				<div class="col"><div class="label">Email</div><input id="email" type="email" class="input" placeholder="seu@email" required /></div>
+				<div class="col"><div class="label">Instituição</div><input id="instituicao" class="input" placeholder="Nome da instituição" required /></div>
+			</div>
+			<div class="row">
+				<div class="col"><div class="label">Região</div><select id="regiao"></select></div>
+				<div class="col"><div class="label">Cargo</div><select id="cargo"></select></div>
+			</div>
+			<div class="hr"></div>
+			<div class="section-title">Questionário (36 itens)</div>
+			<div id="dimensoes"></div>
+			<div class="actions">
+				<button id="submitBtn" onclick="handleSubmit()">Enviar e gerar diagnóstico</button>
+				<button class="secondary" onclick="resetForm()">Limpar</button>
+				<div id="status" class="muted"></div>
+			</div>
+		</div>
+
+		<div class="card hidden" id="resultsCard">
+			<div class="section-title">Resultado</div>
+			<div class="grid">
+				<div class="span-6"><div class="badge">IGM</div><div id="igmVal" style="font-size:28px; font-weight:700; margin-top:6px;">—</div><div id="nivelVal" class="muted"></div></div>
+				<div class="span-6"><div class="badge">Variação</div><div id="cvVal" style="font-size:28px; font-weight:700; margin-top:6px;">—</div><div id="dpVal" class="muted"></div></div>
+				<div class="span-12"><div id="chart" style="height: 340px;"></div></div>
+				<div class="span-6"><div class="badge">Ponto forte</div><div id="pfVal" style="margin-top:6px;"></div></div>
+				<div class="span-6"><div class="badge">Ponto fraco</div><div id="pgVal" style="margin-top:6px;"></div></div>
+			</div>
+			<div class="hr"></div>
+			<div class="actions">
+				<a id="pdfLink" class="link" target="_blank">Baixar relatório (PDF)</a>
+				<a id="docLink" class="link" target="_blank">Abrir relatório (Google Doc)</a>
+				<a id="sheetLink" class="link" target="_blank">Ver planilha (dados tratados)</a>
+			</div>
+		</div>
+	</div>
+
+	<script>
+		google.charts.load('current', { packages: ['corechart'] });
+
+		let CONFIG = null;
+
+		function init() {
+			google.script.run.withSuccessHandler((cfg) => {
+				CONFIG = cfg;
+				fillSelect('regiao', cfg.regioes);
+				fillSelect('cargo', cfg.cargos);
+				renderDimensoes(cfg);
+			}).getFormConfig();
+		}
+
+		function fillSelect(id, options) {
+			const el = document.getElementById(id);
+			el.innerHTML = options.map(v => `<option value="${v}">${v}</option>`).join('');
+		}
+
+		function renderDimensoes(cfg) {
+			const root = document.getElementById('dimensoes');
+			root.innerHTML = '';
+			cfg.dimensoes.forEach((dim) => {
+				const details = document.createElement('details');
+				details.open = true;
+				const summary = document.createElement('summary');
+				summary.textContent = dim.title;
+				details.appendChild(summary);
+				const content = document.createElement('div');
+				content.className = 'content';
+				const table = document.createElement('table');
+				const thead = document.createElement('thead');
+				thead.innerHTML = `<tr><th style="width:60%">Indicador</th>${CONFIG.likertOptions.map(o => `<th class='scale'>${o.value}</th>`).join('')}</tr>`;
+				table.appendChild(thead);
+				const tbody = document.createElement('tbody');
+				dim.items.forEach((text, idx) => {
+					const tr = document.createElement('tr');
+					const tdText = document.createElement('td');
+					tdText.textContent = text;
+					tr.appendChild(tdText);
+					CONFIG.likertOptions.forEach((opt) => {
+						const td = document.createElement('td');
+						td.className = 'scale';
+						const id = `${dim.key}_${idx}_${opt.value}`;
+						td.innerHTML = `<input type="radio" name="${dim.key}_${idx}" id="${id}" value="${opt.value}" required />`;
+						tr.appendChild(td);
+					});
+					tbody.appendChild(tr);
+				});
+				table.appendChild(tbody);
+				content.appendChild(table);
+				details.appendChild(content);
+				root.appendChild(details);
+			});
+		}
+
+		function collectAnswers() {
+			const answers = {};
+			CONFIG.dimensoes.forEach((dim) => {
+				answers[dim.key] = dim.items.map((_, idx) => {
+					const name = `${dim.key}_${idx}`;
+					const el = document.querySelector(`input[name='${name}']:checked`);
+					return el ? parseInt(el.value, 10) : null;
+				});
+			});
+			return answers;
+		}
+
+		function validateAnswers(answers) {
+			for (const key of Object.keys(answers)) {
+				if (answers[key].some(v => v === null)) return false;
+			}
+			return true;
+		}
+
+		function handleSubmit() {
+			const email = document.getElementById('email').value.trim();
+			const instituicao = document.getElementById('instituicao').value.trim();
+			const regiao = document.getElementById('regiao').value;
+			const cargo = document.getElementById('cargo').value;
+			const answers = collectAnswers();
+			if (!email || !instituicao || !validateAnswers(answers)) {
+				setStatus('Preencha todos os campos e respostas.', true);
+				return;
+			}
+			disableSubmit(true);
+			setStatus('Processando e gerando relatório...');
+			google.script.run.withSuccessHandler(renderResults).withFailureHandler(err => {
+				setStatus('Erro: ' + err.message, true);
+				disableSubmit(false);
+			}).submitResponse({ email, instituicao, regiao, cargo, answers });
+		}
+
+		function renderResults(result) {
+			disableSubmit(false);
+			document.getElementById('formCard').classList.add('hidden');
+			document.getElementById('resultsCard').classList.remove('hidden');
+			document.getElementById('igmVal').textContent = result.estatisticas.media.toFixed(1) + '%';
+			document.getElementById('nivelVal').textContent = `Nível ${result.diagnostico.nivel.numero} — ${result.diagnostico.nivel.nome}`;
+			document.getElementById('cvVal').textContent = result.estatisticas.coeficienteVariacao.toFixed(1) + '%';
+			document.getElementById('dpVal').textContent = 'DP: ' + result.estatisticas.desvioPadrao.toFixed(1);
+			document.getElementById('pfVal').textContent = `${labelDim(result.diagnostico.pontoForte[0])} (${result.diagnostico.pontoForte[1].toFixed(1)}%)`;
+			document.getElementById('pgVal').textContent = `${labelDim(result.diagnostico.pontoFraco[0])} (${result.diagnostico.pontoFraco[1].toFixed(1)}%)`;
+			document.getElementById('pdfLink').href = result.pdfUrl;
+			document.getElementById('docLink').href = result.docUrl;
+			document.getElementById('sheetLink').href = result.spreadsheetUrl;
+
+			drawChart(result.indices);
+			setStatus('Relatório enviado por email e disponível para download.');
+		}
+
+		function labelDim(key) {
+			const map = {
+				avaliacao: 'Avaliação', transparencia: 'Transparência', centralidadeHumana: 'Centralidade Humana', inclusao: 'Inclusão', conformidade: 'Conformidade', sustentabilidade: 'Sustentabilidade'
+			};
+			return map[key] || key;
+		}
+
+		function drawChart(indices) {
+			google.charts.setOnLoadCallback(() => {
+				const data = new google.visualization.DataTable();
+				data.addColumn('string', 'Dimensão');
+				data.addColumn('number', 'Score');
+				data.addRows([
+					['Avaliação', indices.avaliacao],
+					['Transparência', indices.transparencia],
+					['Centralidade Humana', indices.centralidadeHumana],
+					['Inclusão', indices.inclusao],
+					['Conformidade', indices.conformidade],
+					['Sustentabilidade', indices.sustentabilidade]
+				]);
+				const options = {
+					backgroundColor: 'transparent',
+					legend: { position: 'none' },
+					hAxis: { textStyle: { color: '#9fb0ff' }, viewWindow: { min: 0, max: 100 } },
+					vAxis: { textStyle: { color: '#9fb0ff' } },
+					colors: ['#6ea8fe'],
+					chartArea: { left: 80, top: 20, width: '80%', height: '75%' },
+					annotations: { textStyle: { color: '#e7ecff' } }
+				};
+				const chart = new google.visualization.ColumnChart(document.getElementById('chart'));
+				chart.draw(data, options);
+			});
+		}
+
+		function setStatus(text, isError) {
+			const el = document.getElementById('status');
+			el.textContent = text || '';
+			el.style.color = isError ? 'var(--bad)' : 'var(--muted)';
+		}
+
+		function disableSubmit(disabled) {
+			document.getElementById('submitBtn').disabled = disabled;
+		}
+
+		function resetForm() {
+			location.reload();
+		}
+
+		window.onload = init;
+	</script>
+</body>
+</html>
