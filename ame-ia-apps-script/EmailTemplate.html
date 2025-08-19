@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+  <body style="font-family: Arial, sans-serif; color:#111;">
+    <p>Prezado(a),</p>
+    <p>Segue o diagnóstico AME-IA (Avaliação de Maturidade Ética em IA) da sua instituição.</p>
+    <p>
+      <strong>IGM:</strong> <?= igm.toFixed(1) ?>%<br/>
+      <strong>Nível:</strong> Nível <?= diagnostico.nivel.numero ?> — <?= diagnostico.nivel.nome ?>
+    </p>
+    <p>
+      <a href="<?= pdfUrl ?>">Baixar PDF</a> · <a href="<?= docUrl ?>">Abrir Google Doc</a>
+    </p>
+    <p>
+      Caso necessite do relatório expandido com plano de ação detalhado, responda este email.
+    </p>
+    <p>Atenciosamente,<br/>Equipe AME-IA</p>
+  </body>
+</html>
