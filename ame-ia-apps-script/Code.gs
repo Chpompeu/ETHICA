@@ -105,6 +105,7 @@ function getFormConfig() {
 
 function submitResponse(payload) {
 	try {
+		validarPayload(payload);
 		const spreadsheet = getOrCreateSpreadsheet();
 		const rawSheet = getOrCreateSheet(spreadsheet, RAW_SHEET_NAME, [
 			'Timestamp', 'Email', 'Instituição', 'Região', 'Cargo',
@@ -112,7 +113,7 @@ function submitResponse(payload) {
 		]);
 		const processedSheet = getOrCreateSheet(spreadsheet, PROCESSED_SHEET_NAME, [
 			'Timestamp', 'Email', 'Instituição', 'Região', 'Cargo',
-			'IGM', 'DP', 'CV', 'Quartil', 'Nível (número)', 'Nível (nome)',
+			'IGM', 'DP', 'CV', 'Faixa da escala', 'Nível (número)', 'Nível (nome)',
 			'Avaliação', 'Transparência', 'Centralidade Humana', 'Inclusão', 'Conformidade', 'Sustentabilidade',
 			'Ponto Forte (dim)', 'Ponto Forte (score)', 'Ponto Fraco (dim)', 'Ponto Fraco (score)'
 		]);
@@ -126,12 +127,11 @@ function submitResponse(payload) {
 		appendProcessedRow(processedSheet, payload, indices, igm, estatisticas, diagnostico);
 
 		const folder = getOrCreateReportsFolder();
-		const { docUrl, pdfUrl } = gerarRelatorioPDF(folder, payload, indices, igm, estatisticas, diagnostico, spreadsheet.getUrl());
+		const { docUrl, pdfUrl, pdfBlob } = gerarRelatorioPDF(folder, payload, indices, igm, estatisticas, diagnostico);
 
-		enviarEmailRelatorio(payload.email, pdfUrl, docUrl, igm, diagnostico);
+		enviarEmailRelatorio(payload.email, pdfUrl, docUrl, pdfBlob, igm, diagnostico);
 
 		return {
-			spreadsheetUrl: spreadsheet.getUrl(),
 			indices: indices,
 			igm: igm,
 			estatisticas: estatisticas,
@@ -142,6 +142,30 @@ function submitResponse(payload) {
 	} catch (err) {
 		throw new Error('Falha ao processar resposta: ' + (err && err.message ? err.message : err));
 	}
+}
+
+function validarPayload(payload) {
+	if (!payload || !payload.answers) throw new Error('Respostas ausentes.');
+	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(payload.email || '').trim())) {
+		throw new Error('E-mail inválido.');
+	}
+	if (!String(payload.instituicao || '').trim()) throw new Error('Instituição não informada.');
+	const cfg = getFormConfig();
+	cfg.dimensoes.forEach(function(dim) {
+		const valores = payload.answers[dim.key] || [];
+		if (valores.length !== dim.items.length) {
+			throw new Error('Respostas incompletas na dimensão ' + dim.title + '.');
+		}
+		valores.forEach(function(v) {
+			const n = parseInt(v, 10);
+			if (!(n >= 1 && n <= 5)) throw new Error('Valor fora da escala 1–5 na dimensão ' + dim.title + '.');
+		});
+	});
+}
+
+function labelDimensao(key) {
+	const dim = getFormConfig().dimensoes.filter(function(d) { return d.key === key; })[0];
+	return dim ? dim.title : key;
 }
 
 function buildRawHeaders() {
@@ -179,7 +203,7 @@ function appendProcessedRow(sheet, payload, indices, igm, estatisticas, diagnost
 		igm,
 		estatisticas.desvioPadrao,
 		estatisticas.coeficienteVariacao,
-		calcularQuartil(estatisticas.media),
+		diagnostico.faixa,
 		diagnostico.nivel.numero,
 		diagnostico.nivel.nome,
 		indices.avaliacao,
@@ -199,7 +223,7 @@ function computeIndices(answers) {
 		for (var i = 0; i < valores.length; i++) {
 			soma += parseInt(valores[i], 10);
 		}
-		return (soma / valores.length) * 20; // converte 1-5 para 0-100
+		return ((soma / valores.length) - 1) * 25; // converte a média 1-5 para 0-100
 	}
 	return {
 		avaliacao: calcularIndice(answers.avaliacao || []),
@@ -228,7 +252,7 @@ function calcularEstatisticas(indices, igm) {
 	return {
 		media: igm,
 		desvioPadrao: desvioPadrao,
-		coeficienteVariacao: (desvioPadrao / igm) * 100,
+		coeficienteVariacao: igm > 0 ? (desvioPadrao / igm) * 100 : 0,
 		min: Math.min.apply(null, valores),
 		max: Math.max.apply(null, valores),
 		amplitude: Math.max.apply(null, valores) - Math.min.apply(null, valores)
@@ -242,7 +266,7 @@ function gerarDiagnostico(indices, estatisticas) {
 		pontoFraco: entries[entries.length - 1],
 		assimetria: estatisticas.coeficienteVariacao > 20,
 		nivel: getNivelMaturidade(estatisticas.media),
-		quartil: calcularQuartil(estatisticas.media)
+		faixa: calcularFaixaEscala(estatisticas.media)
 	};
 }
 
@@ -261,20 +285,30 @@ function classificar(score) {
 	return 'Crítico';
 }
 
-function calcularDP(valor) {
-	return (valor * 0.15).toFixed(1);
+// Posição do score dentro da própria escala 0-100 (quartos da escala).
+// Não é um quartil populacional: não compara com outras instituições.
+function calcularFaixaEscala(score) {
+	if (score >= 75) return '4º quarto da escala (75–100)';
+	if (score >= 50) return '3º quarto da escala (50–75)';
+	if (score >= 25) return '2º quarto da escala (25–50)';
+	return '1º quarto da escala (0–25)';
 }
 
-function calcularQuartil(score) {
-	if (score >= 75) return 'quartil superior (Q3)';
-	if (score >= 58) return 'tercil superior';
-	if (score >= 42) return 'tercil médio';
-	return 'tercil inferior';
-}
-
-function gerarInterpretacao(indices, diagnostico) {
-	var padrao = identificarPadrao(indices);
-	return 'Os resultados indicam ' + padrao + ', padrão consistente com instituições do Sul Global conforme literatura (Santos, 2007; Quijano, 2000). A discrepância identificada corrobora hipóteses sobre colonialidade algorítmica e necessidade de abordagens contextualizadas.';
+function gerarInterpretacao(indices, diagnostico, estatisticas) {
+	if (estatisticas.amplitude === 0) {
+		return 'Todas as dimensões obtiveram o mesmo score (' + estatisticas.media.toFixed(1) + '). ' +
+			'Este diagnóstico reflete a percepção de um único respondente e deve ser interpretado em conjunto com outras fontes institucionais.';
+	}
+	var texto = 'Os resultados indicam ' + identificarPadrao(indices) + '. ' +
+		'A dimensão mais desenvolvida é ' + labelDimensao(diagnostico.pontoForte[0]) +
+		' (' + diagnostico.pontoForte[1].toFixed(1) + ') e a menos desenvolvida é ' +
+		labelDimensao(diagnostico.pontoFraco[0]) + ' (' + diagnostico.pontoFraco[1].toFixed(1) +
+		'), uma amplitude de ' + estatisticas.amplitude.toFixed(1) + ' pontos.';
+	if (diagnostico.assimetria) {
+		texto += ' O coeficiente de variação acima de 20% sinaliza desenvolvimento assimétrico entre as dimensões.';
+	}
+	texto += ' Este diagnóstico reflete a percepção de um único respondente e deve ser interpretado em conjunto com outras fontes institucionais.';
+	return texto;
 }
 
 function identificarPadrao(indices) {
@@ -343,20 +377,21 @@ function getOrCreateReportsFolder() {
 	return DriveApp.createFolder(REPORTS_FOLDER_NAME);
 }
 
-function gerarRelatorioPDF(folder, payload, indices, igm, estatisticas, diagnostico, spreadsheetUrl) {
+function gerarRelatorioPDF(folder, payload, indices, igm, estatisticas, diagnostico) {
 	var doc = DocumentApp.create('Relatório AME-IA - ' + payload.instituicao + ' - ' + new Date().toISOString());
 	var body = doc.getBody();
 	body.appendParagraph('AME-IA | Diagnóstico Institucional - Modelo Contextual').setHeading(DocumentApp.ParagraphHeading.HEADING1);
 	body.appendParagraph('Respondente: ' + payload.email);
 	body.appendParagraph('Instituição: ' + payload.instituicao + ' | Região: ' + payload.regiao + ' | Cargo: ' + payload.cargo);
 	body.appendParagraph('');
-	body.appendParagraph('Índice Global de Maturidade (IGM): ' + estatisticas.media.toFixed(1) + '%');
+	body.appendParagraph('Índice Global de Maturidade (IGM): ' + estatisticas.media.toFixed(1) + ' / 100');
 	body.appendParagraph('Classificação: Nível ' + diagnostico.nivel.numero + ' - ' + diagnostico.nivel.nome);
-	body.appendParagraph('CV: ' + estatisticas.coeficienteVariacao.toFixed(1) + '% | DP: ' + estatisticas.desvioPadrao.toFixed(1));
+	body.appendParagraph('Posição na escala: ' + diagnostico.faixa);
+	body.appendParagraph('CV: ' + estatisticas.coeficienteVariacao.toFixed(1) + '% | DP entre dimensões: ' + estatisticas.desvioPadrao.toFixed(1) + ' pontos');
 	body.appendParagraph('');
 
 	var tableData = [
-		['Dimensão', 'Score (%)', 'Classificação'],
+		['Dimensão', 'Score (0–100)', 'Classificação'],
 		['Avaliação', indices.avaliacao.toFixed(1), classificar(indices.avaliacao)],
 		['Transparência', indices.transparencia.toFixed(1), classificar(indices.transparencia)],
 		['Centralidade Humana', indices.centralidadeHumana.toFixed(1), classificar(indices.centralidadeHumana)],
@@ -368,37 +403,47 @@ function gerarRelatorioPDF(folder, payload, indices, igm, estatisticas, diagnost
 	body.appendParagraph('');
 
 	body.appendParagraph('Análise Contextual').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-	body.appendParagraph('Ponto forte: ' + diagnostico.pontoForte[0] + ' (' + diagnostico.pontoForte[1].toFixed(1) + '%)');
-	body.appendParagraph('Ponto fraco: ' + diagnostico.pontoFraco[0] + ' (' + diagnostico.pontoFraco[1].toFixed(1) + '%)');
-	body.appendParagraph(gerarInterpretacao(indices, diagnostico));
+	body.appendParagraph('Ponto forte: ' + labelDimensao(diagnostico.pontoForte[0]) + ' (' + diagnostico.pontoForte[1].toFixed(1) + ')');
+	body.appendParagraph('Ponto fraco: ' + labelDimensao(diagnostico.pontoFraco[0]) + ' (' + diagnostico.pontoFraco[1].toFixed(1) + ')');
+	body.appendParagraph(gerarInterpretacao(indices, diagnostico, estatisticas));
 	body.appendParagraph('');
 
 	body.appendParagraph('Recomendações Estratégicas').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-	body.appendParagraph('Prioridade imediata - Dimensão ' + diagnostico.pontoFraco[0]);
+	body.appendParagraph('Prioridade imediata - Dimensão ' + labelDimensao(diagnostico.pontoFraco[0]));
 	body.appendParagraph(gerarRecomendacoes(diagnostico.pontoFraco[0]));
 	body.appendParagraph('Critérios operacionais aplicáveis: ' + gerarCriteriosOperacionais(diagnostico.pontoFraco[0]));
 	body.appendParagraph('');
 
-	body.appendParagraph('Dados e próximos passos').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-	body.appendParagraph('Planilha com dados: ' + spreadsheetUrl);
+	body.appendParagraph('Próximos passos').setHeading(DocumentApp.ParagraphHeading.HEADING2);
 	body.appendParagraph('Para relatório expandido, responda este email.');
 
 	doc.saveAndClose();
 
 	var file = DriveApp.getFileById(doc.getId());
-	folder.addFile(file);
-	DriveApp.getRootFolder().removeFile(file);
+	file.moveTo(folder);
 
-	file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-	var pdfBlob = file.getAs('application/pdf');
-	var pdf = folder.createFile(pdfBlob).setName(file.getName() + '.pdf');
-	pdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+	var pdfBlob = file.getAs('application/pdf').setName(file.getName() + '.pdf');
+	var pdf = folder.createFile(pdfBlob);
 
-	return { docUrl: file.getUrl(), pdfUrl: pdf.getUrl() };
+	// Os arquivos ficam privados (contêm dados pessoais — LGPD).
+	// Apenas o respondente recebe acesso de leitura.
+	compartilharComRespondente(file, payload.email);
+	compartilharComRespondente(pdf, payload.email);
+
+	return { docUrl: file.getUrl(), pdfUrl: pdf.getUrl(), pdfBlob: pdfBlob };
 }
 
-function enviarEmailRelatorio(email, pdfUrl, docUrl, igm, diagnostico) {
-	var subject = 'AME-IA | Diagnóstico Institucional - IGM: ' + Math.round(igm) + '%';
+function compartilharComRespondente(file, email) {
+	try {
+		file.addViewer(email);
+	} catch (err) {
+		// E-mails sem conta Google podem ser recusados; o PDF segue anexado ao e-mail.
+		console.warn('Não foi possível compartilhar ' + file.getName() + ' com ' + email + ': ' + err);
+	}
+}
+
+function enviarEmailRelatorio(email, pdfUrl, docUrl, pdfBlob, igm, diagnostico) {
+	var subject = 'AME-IA | Diagnóstico Institucional - IGM: ' + Math.round(igm) + '/100';
 	var template = HtmlService.createTemplateFromFile('EmailTemplate');
 	template.igm = igm;
 	template.diagnostico = diagnostico;
@@ -408,6 +453,7 @@ function enviarEmailRelatorio(email, pdfUrl, docUrl, igm, diagnostico) {
 	MailApp.sendEmail({
 		to: email,
 		subject: subject,
-		htmlBody: html
+		htmlBody: html,
+		attachments: [pdfBlob]
 	});
 }

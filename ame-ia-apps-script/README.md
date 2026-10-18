@@ -20,10 +20,10 @@ Questionário dinâmico com cálculo automático, gráficos, geração de relat�
 
 ## O que o app faz
 - Renderiza as 6 dimensões (36 itens) com escala Likert 1–5
-- Calcula os índices dimensionais, IGM, DP, CV, nível e quartil
+- Calcula os índices dimensionais em escala 0–100 (`(média − 1) × 25`), IGM, desvio-padrão e CV entre dimensões, nível de maturidade e posição na escala (quartos de 0–100; não é comparação com outras instituições)
 - Mostra um **gráfico de colunas** com os scores por dimensão
 - Gera um **Google Doc** com o relatório e salva um **PDF** em `Meu Drive/AME-IA_Relatorios`
-- Envia e-mail ao respondente com os links do relatório (PDF + Doc)
+- Envia e-mail ao respondente com o PDF anexo e links para o Drive
 - Armazena os dados em planilha Google criada automaticamente:
   - Aba `Base_Dados`: respostas cruas
   - Aba `Processado`: dados tratados (métricas e classificações)
@@ -35,5 +35,6 @@ Questionário dinâmico com cálculo automático, gráficos, geração de relat�
 
 ## Observações
 - Os arquivos são gravados em pastas e planilhas automaticamente se não existirem.
-- Os relatórios (Doc e PDF) são compartilhados como **Qualquer pessoa com o link: visualizador**.
-- Para controle restrito, ajuste o compartilhamento no `Code.gs` (função `gerarRelatorioPDF`).
+- Os relatórios (Doc e PDF) ficam **privados**, pois contêm dados pessoais (LGPD). Apenas o e-mail do respondente recebe acesso de leitura (função `compartilharComRespondente` em `Code.gs`).
+- A planilha com todas as respostas não é exibida ao respondente; só o dono do script tem acesso.
+- Linhas gravadas na aba `Processado` por versões anteriores usavam outra escala (média × 20) e não são diretamente comparáveis com as novas.

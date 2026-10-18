@@ -70,7 +70,7 @@
 		<div class="card hidden" id="resultsCard">
 			<div class="section-title">Resultado</div>
 			<div class="grid">
-				<div class="span-6"><div class="badge">IGM</div><div id="igmVal" style="font-size:28px; font-weight:700; margin-top:6px;">—</div><div id="nivelVal" class="muted"></div></div>
+				<div class="span-6"><div class="badge">IGM</div><div id="igmVal" style="font-size:28px; font-weight:700; margin-top:6px;">—</div><div id="nivelVal" class="muted"></div><div id="faixaVal" class="muted"></div></div>
 				<div class="span-6"><div class="badge">Variação</div><div id="cvVal" style="font-size:28px; font-weight:700; margin-top:6px;">—</div><div id="dpVal" class="muted"></div></div>
 				<div class="span-12"><div id="chart" style="height: 340px;"></div></div>
 				<div class="span-6"><div class="badge">Ponto forte</div><div id="pfVal" style="margin-top:6px;"></div></div>
@@ -80,7 +80,6 @@
 			<div class="actions">
 				<a id="pdfLink" class="link" target="_blank">Baixar relatório (PDF)</a>
 				<a id="docLink" class="link" target="_blank">Abrir relatório (Google Doc)</a>
-				<a id="sheetLink" class="link" target="_blank">Ver planilha (dados tratados)</a>
 			</div>
 		</div>
 	</div>
@@ -182,18 +181,18 @@
 			disableSubmit(false);
 			document.getElementById('formCard').classList.add('hidden');
 			document.getElementById('resultsCard').classList.remove('hidden');
-			document.getElementById('igmVal').textContent = result.estatisticas.media.toFixed(1) + '%';
+			document.getElementById('igmVal').textContent = result.estatisticas.media.toFixed(1) + ' / 100';
+			document.getElementById('faixaVal').textContent = result.diagnostico.faixa;
 			document.getElementById('nivelVal').textContent = `Nível ${result.diagnostico.nivel.numero} — ${result.diagnostico.nivel.nome}`;
 			document.getElementById('cvVal').textContent = result.estatisticas.coeficienteVariacao.toFixed(1) + '%';
-			document.getElementById('dpVal').textContent = 'DP: ' + result.estatisticas.desvioPadrao.toFixed(1);
-			document.getElementById('pfVal').textContent = `${labelDim(result.diagnostico.pontoForte[0])} (${result.diagnostico.pontoForte[1].toFixed(1)}%)`;
-			document.getElementById('pgVal').textContent = `${labelDim(result.diagnostico.pontoFraco[0])} (${result.diagnostico.pontoFraco[1].toFixed(1)}%)`;
+			document.getElementById('dpVal').textContent = 'DP entre dimensões: ' + result.estatisticas.desvioPadrao.toFixed(1) + ' pontos';
+			document.getElementById('pfVal').textContent = `${labelDim(result.diagnostico.pontoForte[0])} (${result.diagnostico.pontoForte[1].toFixed(1)})`;
+			document.getElementById('pgVal').textContent = `${labelDim(result.diagnostico.pontoFraco[0])} (${result.diagnostico.pontoFraco[1].toFixed(1)})`;
 			document.getElementById('pdfLink').href = result.pdfUrl;
 			document.getElementById('docLink').href = result.docUrl;
-			document.getElementById('sheetLink').href = result.spreadsheetUrl;
 
 			drawChart(result.indices);
-			setStatus('Relatório enviado por email e disponível para download.');
+			setStatus('Relatório enviado por e-mail (PDF anexo).');
 		}
 
 		function labelDim(key) {
@@ -219,8 +218,8 @@
 				const options = {
 					backgroundColor: 'transparent',
 					legend: { position: 'none' },
-					hAxis: { textStyle: { color: '#9fb0ff' }, viewWindow: { min: 0, max: 100 } },
-					vAxis: { textStyle: { color: '#9fb0ff' } },
+					hAxis: { textStyle: { color: '#9fb0ff' } },
+					vAxis: { textStyle: { color: '#9fb0ff' }, viewWindow: { min: 0, max: 100 } },
 					colors: ['#6ea8fe'],
 					chartArea: { left: 80, top: 20, width: '80%', height: '75%' },
 					annotations: { textStyle: { color: '#e7ecff' } }

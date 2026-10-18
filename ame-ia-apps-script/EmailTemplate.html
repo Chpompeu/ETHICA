@@ -4,11 +4,12 @@
     <p>Prezado(a),</p>
     <p>Segue o diagnóstico AME-IA (Avaliação de Maturidade Ética em IA) da sua instituição.</p>
     <p>
-      <strong>IGM:</strong> <?= igm.toFixed(1) ?>%<br/>
+      <strong>IGM:</strong> <?= igm.toFixed(1) ?> / 100<br/>
       <strong>Nível:</strong> Nível <?= diagnostico.nivel.numero ?> — <?= diagnostico.nivel.nome ?>
     </p>
     <p>
-      <a href="<?= pdfUrl ?>">Baixar PDF</a> · <a href="<?= docUrl ?>">Abrir Google Doc</a>
+      O relatório segue em PDF anexo. Se você tiver conta Google com este e-mail, também pode acessar:
+      <a href="<?= pdfUrl ?>">PDF no Drive</a> · <a href="<?= docUrl ?>">Google Doc</a>
     </p>
     <p>
       Caso necessite do relatório expandido com plano de ação detalhado, responda este email.
