@@ -6,6 +6,8 @@ const REPORTS_FOLDER_NAME = 'AME-IA_Relatorios';
 const ESCALA_VERSAO = 'v2';
 // Mínimo de respostas anteriores para calcular percentil/quartil relativo.
 const MIN_RESPOSTAS_COMPARACAO = 10;
+// Mínimo de outras instituições para calcular percentil/quartil entre instituições.
+const MIN_INSTITUICOES_COMPARACAO = 5;
 
 function doGet() {
 	return HtmlService
@@ -120,7 +122,8 @@ function submitResponse(payload) {
 			'IGM', 'DP', 'CV', 'Faixa da escala', 'Nível (número)', 'Nível (nome)',
 			'Avaliação', 'Transparência', 'Centralidade Humana', 'Inclusão', 'Conformidade', 'Sustentabilidade',
 			'Ponto Forte (dim)', 'Ponto Forte (score)', 'Ponto Fraco (dim)', 'Ponto Fraco (score)',
-			'Percentil (respostas anteriores)', 'Quartil (respostas anteriores)', 'Base de comparação (n)', 'Versão da escala'
+			'Percentil (respostas anteriores)', 'Quartil (respostas anteriores)', 'Base de comparação (n)', 'Versão da escala',
+			'IGM médio da instituição', 'Percentil (instituições)', 'Quartil (instituições)', 'Instituições comparadas (n)'
 		]);
 
 		const indices = computeIndices(payload.answers);
@@ -128,7 +131,7 @@ function submitResponse(payload) {
 		const estatisticas = calcularEstatisticas(indices, igm);
 		const diagnostico = gerarDiagnostico(indices, estatisticas);
 		// Calculado antes de gravar a linha atual, para não comparar a resposta consigo mesma.
-		diagnostico.comparacao = calcularPosicaoRelativa(processedSheet, igm);
+		diagnostico.comparacao = calcularPosicaoRelativa(processedSheet, igm, payload.instituicao);
 
 		appendRawRow(rawSheet, payload);
 		appendProcessedRow(processedSheet, payload, indices, igm, estatisticas, diagnostico);
@@ -201,6 +204,8 @@ function appendRawRow(sheet, payload) {
 }
 
 function appendProcessedRow(sheet, payload, indices, igm, estatisticas, diagnostico) {
+	var comparacaoResp = diagnostico.comparacao.respondentes;
+	var comparacaoInst = diagnostico.comparacao.instituicoes;
 	sheet.appendRow([
 		new Date(),
 		payload.email,
@@ -221,35 +226,73 @@ function appendProcessedRow(sheet, payload, indices, igm, estatisticas, diagnost
 		indices.sustentabilidade,
 		diagnostico.pontoForte[0], diagnostico.pontoForte[1],
 		diagnostico.pontoFraco[0], diagnostico.pontoFraco[1],
-		diagnostico.comparacao.disponivel ? diagnostico.comparacao.percentil : '',
-		diagnostico.comparacao.disponivel ? diagnostico.comparacao.quartil : '',
-		diagnostico.comparacao.n,
-		ESCALA_VERSAO
+		comparacaoResp.disponivel ? comparacaoResp.percentil : '',
+		comparacaoResp.disponivel ? comparacaoResp.quartil : '',
+		comparacaoResp.n,
+		ESCALA_VERSAO,
+		comparacaoInst.igmInstituicao,
+		comparacaoInst.disponivel ? comparacaoInst.percentil : '',
+		comparacaoInst.disponivel ? comparacaoInst.quartil : '',
+		comparacaoInst.n
 	]);
 }
 
-// Posição do IGM em relação às respostas já gravadas na escala atual.
-// Compara respondentes (não instituições): uma instituição pode ter várias respostas.
-function calcularPosicaoRelativa(sheet, igm) {
+// Posição do IGM em relação às respostas já gravadas na escala atual, de duas formas:
+// - respondentes: cada resposta anterior conta uma vez;
+// - instituicoes: média do IGM por instituição, comparando a instituição atual
+//   (incluindo esta resposta) com as demais.
+function calcularPosicaoRelativa(sheet, igm, instituicao) {
 	var anteriores = [];
+	var porInstituicao = {};
 	if (sheet.getLastRow() > 1) {
 		var dados = sheet.getDataRange().getValues();
 		var cab = dados[0];
 		var colIgm = cab.indexOf('IGM');
+		var colInst = cab.indexOf('Instituição');
 		var colEscala = cab.indexOf('Versão da escala');
 		for (var i = 1; i < dados.length; i++) {
 			var valor = dados[i][colIgm];
 			if (colEscala >= 0 && dados[i][colEscala] === ESCALA_VERSAO && typeof valor === 'number') {
 				anteriores.push(valor);
+				var chave = normalizarInstituicao(dados[i][colInst]);
+				(porInstituicao[chave] = porInstituicao[chave] || []).push(valor);
 			}
 		}
 	}
-	return calcularPercentil(anteriores, igm);
+
+	var chaveAtual = normalizarInstituicao(instituicao);
+	var daAtual = (porInstituicao[chaveAtual] || []).concat([igm]);
+	var igmInstituicao = media(daAtual);
+	var outras = Object.keys(porInstituicao)
+		.filter(function(k) { return k !== chaveAtual; })
+		.map(function(k) { return media(porInstituicao[k]); });
+
+	var porInst = calcularPercentil(outras, igmInstituicao, MIN_INSTITUICOES_COMPARACAO);
+	porInst.igmInstituicao = igmInstituicao;
+	porInst.respostasDaInstituicao = daAtual.length;
+
+	return {
+		respondentes: calcularPercentil(anteriores, igm, MIN_RESPOSTAS_COMPARACAO),
+		instituicoes: porInst
+	};
 }
 
-function calcularPercentil(anteriores, igm) {
+// "UFMG ", "ufmg" e "Ufmg" contam como a mesma instituição. Siglas e nomes por
+// extenso ("Universidade Federal de Minas Gerais") continuam sendo diferentes.
+function normalizarInstituicao(nome) {
+	return String(nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+		.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function media(valores) {
+	var soma = 0;
+	for (var i = 0; i < valores.length; i++) soma += valores[i];
+	return soma / valores.length;
+}
+
+function calcularPercentil(anteriores, igm, minimo) {
 	var n = anteriores.length;
-	if (n < MIN_RESPOSTAS_COMPARACAO) return { disponivel: false, n: n };
+	if (n < minimo) return { disponivel: false, n: n };
 	var abaixo = 0, iguais = 0;
 	for (var i = 0; i < n; i++) {
 		if (anteriores[i] < igm) abaixo++;
@@ -261,13 +304,22 @@ function calcularPercentil(anteriores, igm) {
 	return { disponivel: true, n: n, percentil: percentil, quartil: quartil };
 }
 
-function descreverComparacao(comparacao) {
-	if (!comparacao.disponivel) {
-		return 'Comparação indisponível: são necessárias ao menos ' + MIN_RESPOSTAS_COMPARACAO +
-			' respostas anteriores (há ' + comparacao.n + ').';
+function descreverComparacaoRespondentes(c) {
+	if (!c.disponivel) {
+		return 'Indisponível: são necessárias ao menos ' + MIN_RESPOSTAS_COMPARACAO +
+			' respostas anteriores (há ' + c.n + ').';
 	}
-	return 'Percentil ' + comparacao.percentil + ' (' + comparacao.quartil + ') em relação a ' +
-		comparacao.n + ' respostas anteriores. Compara respondentes, não instituições, e não é uma amostra representativa.';
+	return 'Percentil ' + c.percentil + ' (' + c.quartil + ') em relação a ' + c.n + ' respostas anteriores.';
+}
+
+function descreverComparacaoInstituicoes(c) {
+	var base = 'IGM médio da instituição: ' + c.igmInstituicao.toFixed(1) + ' (' + c.respostasDaInstituicao +
+		(c.respostasDaInstituicao === 1 ? ' resposta). ' : ' respostas). ');
+	if (!c.disponivel) {
+		return base + 'Comparação indisponível: são necessárias ao menos ' + MIN_INSTITUICOES_COMPARACAO +
+			' outras instituições (há ' + c.n + ').';
+	}
+	return base + 'Percentil ' + c.percentil + ' (' + c.quartil + ') em relação a ' + c.n + ' outras instituições.';
 }
 
 function computeIndices(answers) {
@@ -445,7 +497,9 @@ function gerarRelatorioPDF(folder, payload, indices, igm, estatisticas, diagnost
 	body.appendParagraph('Índice Global de Maturidade (IGM): ' + estatisticas.media.toFixed(1) + ' / 100');
 	body.appendParagraph('Classificação: Nível ' + diagnostico.nivel.numero + ' - ' + diagnostico.nivel.nome);
 	body.appendParagraph('Posição na escala: ' + diagnostico.faixa);
-	body.appendParagraph('Comparação: ' + descreverComparacao(diagnostico.comparacao));
+	body.appendParagraph('Comparação com outros respondentes: ' + descreverComparacaoRespondentes(diagnostico.comparacao.respondentes));
+	body.appendParagraph('Comparação com outras instituições: ' + descreverComparacaoInstituicoes(diagnostico.comparacao.instituicoes));
+	body.appendParagraph('As comparações usam apenas quem já respondeu ao questionário; não representam o conjunto das instituições do país.');
 	body.appendParagraph('CV: ' + estatisticas.coeficienteVariacao.toFixed(1) + '% | DP entre dimensões: ' + estatisticas.desvioPadrao.toFixed(1) + ' pontos');
 	body.appendParagraph('');
 

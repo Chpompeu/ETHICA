@@ -21,7 +21,9 @@ Questionário dinâmico com cálculo automático, gráficos, geração de relat�
 ## O que o app faz
 - Renderiza as 6 dimensões (36 itens) com escala Likert 1–5
 - Calcula os índices dimensionais em escala 0–100 (`(média − 1) × 25`), IGM, desvio-padrão e CV entre dimensões, nível de maturidade e posição na escala (quartos de 0–100; não é comparação com outras instituições)
-- Calcula o **percentil e quartil** do IGM em relação às respostas anteriores gravadas na planilha (a partir de 10 respostas na escala atual; compara respondentes, não instituições)
+- Calcula o **percentil e quartil** do IGM de duas formas, usando as respostas anteriores gravadas na planilha (só as da escala atual):
+  - **entre respondentes**: cada resposta conta uma vez (a partir de 10 respostas anteriores);
+  - **entre instituições**: média do IGM por instituição, comparada com as demais (a partir de 5 outras instituições). Nomes são comparados sem diferenciar maiúsculas, acentos e espaços, mas sigla e nome por extenso contam como instituições diferentes.
 - Mostra um **gráfico de colunas** com os scores por dimensão
 - Gera um **Google Doc** com o relatório e salva um **PDF** em `Meu Drive/AME-IA_Relatorios`
 - Envia e-mail ao respondente com o PDF anexo e links para o Drive

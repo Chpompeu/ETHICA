@@ -70,7 +70,7 @@
 		<div class="card hidden" id="resultsCard">
 			<div class="section-title">Resultado</div>
 			<div class="grid">
-				<div class="span-6"><div class="badge">IGM</div><div id="igmVal" style="font-size:28px; font-weight:700; margin-top:6px;">—</div><div id="nivelVal" class="muted"></div><div id="faixaVal" class="muted"></div><div id="compVal" class="muted"></div></div>
+				<div class="span-6"><div class="badge">IGM</div><div id="igmVal" style="font-size:28px; font-weight:700; margin-top:6px;">—</div><div id="nivelVal" class="muted"></div><div id="faixaVal" class="muted"></div><div id="compVal" class="muted"></div><div id="compInstVal" class="muted"></div></div>
 				<div class="span-6"><div class="badge">Variação</div><div id="cvVal" style="font-size:28px; font-weight:700; margin-top:6px;">—</div><div id="dpVal" class="muted"></div></div>
 				<div class="span-12"><div id="chart" style="height: 340px;"></div></div>
 				<div class="span-6"><div class="badge">Ponto forte</div><div id="pfVal" style="margin-top:6px;"></div></div>
@@ -183,7 +183,8 @@
 			document.getElementById('resultsCard').classList.remove('hidden');
 			document.getElementById('igmVal').textContent = result.estatisticas.media.toFixed(1) + ' / 100';
 			document.getElementById('faixaVal').textContent = result.diagnostico.faixa;
-			document.getElementById('compVal').textContent = descreverComparacao(result.diagnostico.comparacao);
+			document.getElementById('compVal').textContent = descreverRespondentes(result.diagnostico.comparacao.respondentes);
+			document.getElementById('compInstVal').textContent = descreverInstituicoes(result.diagnostico.comparacao.instituicoes);
 			document.getElementById('nivelVal').textContent = `Nível ${result.diagnostico.nivel.numero} — ${result.diagnostico.nivel.nome}`;
 			document.getElementById('cvVal').textContent = result.estatisticas.coeficienteVariacao.toFixed(1) + '%';
 			document.getElementById('dpVal').textContent = 'DP entre dimensões: ' + result.estatisticas.desvioPadrao.toFixed(1) + ' pontos';
@@ -196,9 +197,14 @@
 			setStatus('Relatório enviado por e-mail (PDF anexo).');
 		}
 
-		function descreverComparacao(c) {
-			if (!c || !c.disponivel) return `Comparação indisponível (${c ? c.n : 0} respostas anteriores)`;
-			return `Percentil ${c.percentil} (${c.quartil}) entre ${c.n} respostas anteriores`;
+		function descreverRespondentes(c) {
+			if (!c.disponivel) return `Entre respondentes: indisponível (${c.n} respostas anteriores)`;
+			return `Entre respondentes: percentil ${c.percentil} (${c.quartil}) de ${c.n} respostas`;
+		}
+
+		function descreverInstituicoes(c) {
+			if (!c.disponivel) return `Entre instituições: indisponível (${c.n} outras instituições)`;
+			return `Entre instituições: percentil ${c.percentil} (${c.quartil}) de ${c.n} instituições`;
 		}
 
 		function labelDim(key) {
