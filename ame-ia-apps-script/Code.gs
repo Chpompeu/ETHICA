@@ -2,6 +2,10 @@ const SPREADSHEET_NAME = 'AME-IA_Base_Dados';
 const RAW_SHEET_NAME = 'Base_Dados';
 const PROCESSED_SHEET_NAME = 'Processado';
 const REPORTS_FOLDER_NAME = 'AME-IA_Relatorios';
+// Identifica linhas calculadas na escala atual (0-100 = (média - 1) x 25).
+const ESCALA_VERSAO = 'v2';
+// Mínimo de respostas anteriores para calcular percentil/quartil relativo.
+const MIN_RESPOSTAS_COMPARACAO = 10;
 
 function doGet() {
 	return HtmlService
@@ -115,13 +119,16 @@ function submitResponse(payload) {
 			'Timestamp', 'Email', 'Instituição', 'Região', 'Cargo',
 			'IGM', 'DP', 'CV', 'Faixa da escala', 'Nível (número)', 'Nível (nome)',
 			'Avaliação', 'Transparência', 'Centralidade Humana', 'Inclusão', 'Conformidade', 'Sustentabilidade',
-			'Ponto Forte (dim)', 'Ponto Forte (score)', 'Ponto Fraco (dim)', 'Ponto Fraco (score)'
+			'Ponto Forte (dim)', 'Ponto Forte (score)', 'Ponto Fraco (dim)', 'Ponto Fraco (score)',
+			'Percentil (respostas anteriores)', 'Quartil (respostas anteriores)', 'Base de comparação (n)', 'Versão da escala'
 		]);
 
 		const indices = computeIndices(payload.answers);
 		const igm = calcularIGM(indices);
 		const estatisticas = calcularEstatisticas(indices, igm);
 		const diagnostico = gerarDiagnostico(indices, estatisticas);
+		// Calculado antes de gravar a linha atual, para não comparar a resposta consigo mesma.
+		diagnostico.comparacao = calcularPosicaoRelativa(processedSheet, igm);
 
 		appendRawRow(rawSheet, payload);
 		appendProcessedRow(processedSheet, payload, indices, igm, estatisticas, diagnostico);
@@ -213,8 +220,54 @@ function appendProcessedRow(sheet, payload, indices, igm, estatisticas, diagnost
 		indices.conformidade,
 		indices.sustentabilidade,
 		diagnostico.pontoForte[0], diagnostico.pontoForte[1],
-		diagnostico.pontoFraco[0], diagnostico.pontoFraco[1]
+		diagnostico.pontoFraco[0], diagnostico.pontoFraco[1],
+		diagnostico.comparacao.disponivel ? diagnostico.comparacao.percentil : '',
+		diagnostico.comparacao.disponivel ? diagnostico.comparacao.quartil : '',
+		diagnostico.comparacao.n,
+		ESCALA_VERSAO
 	]);
+}
+
+// Posição do IGM em relação às respostas já gravadas na escala atual.
+// Compara respondentes (não instituições): uma instituição pode ter várias respostas.
+function calcularPosicaoRelativa(sheet, igm) {
+	var anteriores = [];
+	if (sheet.getLastRow() > 1) {
+		var dados = sheet.getDataRange().getValues();
+		var cab = dados[0];
+		var colIgm = cab.indexOf('IGM');
+		var colEscala = cab.indexOf('Versão da escala');
+		for (var i = 1; i < dados.length; i++) {
+			var valor = dados[i][colIgm];
+			if (colEscala >= 0 && dados[i][colEscala] === ESCALA_VERSAO && typeof valor === 'number') {
+				anteriores.push(valor);
+			}
+		}
+	}
+	return calcularPercentil(anteriores, igm);
+}
+
+function calcularPercentil(anteriores, igm) {
+	var n = anteriores.length;
+	if (n < MIN_RESPOSTAS_COMPARACAO) return { disponivel: false, n: n };
+	var abaixo = 0, iguais = 0;
+	for (var i = 0; i < n; i++) {
+		if (anteriores[i] < igm) abaixo++;
+		else if (anteriores[i] === igm) iguais++;
+	}
+	// Percentil de posição com empates contados pela metade.
+	var percentil = Math.round(((abaixo + iguais / 2) / n) * 100);
+	var quartil = percentil >= 75 ? 'Q4' : percentil >= 50 ? 'Q3' : percentil >= 25 ? 'Q2' : 'Q1';
+	return { disponivel: true, n: n, percentil: percentil, quartil: quartil };
+}
+
+function descreverComparacao(comparacao) {
+	if (!comparacao.disponivel) {
+		return 'Comparação indisponível: são necessárias ao menos ' + MIN_RESPOSTAS_COMPARACAO +
+			' respostas anteriores (há ' + comparacao.n + ').';
+	}
+	return 'Percentil ' + comparacao.percentil + ' (' + comparacao.quartil + ') em relação a ' +
+		comparacao.n + ' respostas anteriores. Compara respondentes, não instituições, e não é uma amostra representativa.';
 }
 
 function computeIndices(answers) {
@@ -363,9 +416,14 @@ function getOrCreateSheet(spreadsheet, name, headers) {
 			sheet.appendRow(headers);
 		}
 	} else {
-		// Garantir cabeçalhos na primeira linha se vazia
-		if (headers && headers.length && sheet.getLastRow() === 0) {
-			sheet.appendRow(headers);
+		if (headers && headers.length) {
+			if (sheet.getLastRow() === 0) {
+				sheet.appendRow(headers);
+			} else {
+				// As colunas só são acrescentadas ao final, então reescrever a linha de
+				// cabeçalho atualiza planilhas criadas por versões anteriores.
+				sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+			}
 		}
 	}
 	return sheet;
@@ -387,6 +445,7 @@ function gerarRelatorioPDF(folder, payload, indices, igm, estatisticas, diagnost
 	body.appendParagraph('Índice Global de Maturidade (IGM): ' + estatisticas.media.toFixed(1) + ' / 100');
 	body.appendParagraph('Classificação: Nível ' + diagnostico.nivel.numero + ' - ' + diagnostico.nivel.nome);
 	body.appendParagraph('Posição na escala: ' + diagnostico.faixa);
+	body.appendParagraph('Comparação: ' + descreverComparacao(diagnostico.comparacao));
 	body.appendParagraph('CV: ' + estatisticas.coeficienteVariacao.toFixed(1) + '% | DP entre dimensões: ' + estatisticas.desvioPadrao.toFixed(1) + ' pontos');
 	body.appendParagraph('');
 
