@@ -1,19 +1,25 @@
+// Motor genérico do questionário. Os conteúdos (perguntas, escala, níveis, textos)
+// ficam em Instrumentos.gs.
+
 const SPREADSHEET_NAME = 'AME-IA_Base_Dados';
-const RAW_SHEET_NAME = 'Base_Dados';
-const PROCESSED_SHEET_NAME = 'Processado';
 const REPORTS_FOLDER_NAME = 'AME-IA_Relatorios';
-// Identifica linhas calculadas na escala atual (0-100 = (média - 1) x 25).
+// Identifica linhas calculadas na escala atual (cada opção vale 0, 25, 50, 75 ou 100).
 const ESCALA_VERSAO = 'v2';
 // Mínimo de respostas anteriores para calcular percentil/quartil relativo.
 const MIN_RESPOSTAS_COMPARACAO = 10;
-// Mínimo de outras instituições para calcular percentil/quartil entre instituições.
-const MIN_INSTITUICOES_COMPARACAO = 5;
+// Mínimo de outras organizações para calcular percentil/quartil entre organizações.
+const MIN_ORGANIZACOES_COMPARACAO = 5;
+// Acima desta proporção de "Não sei", o relatório alerta que a nota é pouco confiável.
+const LIMITE_NAO_SEI = 0.25;
 
-function doGet() {
-	return HtmlService
-		.createTemplateFromFile('Index')
+function doGet(e) {
+	var id = e && e.parameter && e.parameter.q;
+	if (!INSTRUMENTOS[id]) id = INSTRUMENTO_PADRAO;
+	var template = HtmlService.createTemplateFromFile('Index');
+	template.instrumentoId = id;
+	return template
 		.evaluate()
-		.setTitle('AME-IA - Questionário Dinâmico')
+		.setTitle(INSTRUMENTOS[id].titulo)
 		.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -21,166 +27,75 @@ function include(filename) {
 	return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-function getFormConfig() {
-	return {
-		likertOptions: [
-			{ value: 1, label: 'Discordo totalmente' },
-			{ value: 2, label: 'Discordo parcialmente' },
-			{ value: 3, label: 'Neutro' },
-			{ value: 4, label: 'Concordo parcialmente' },
-			{ value: 5, label: 'Concordo totalmente' }
-		],
-		regioes: ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'],
-		cargos: ['Reitor', 'Pró-Reitor', 'Diretor', 'Coordenador', 'Docente', 'Técnico'],
-		dimensoes: [
-			{
-				key: 'avaliacao',
-				title: 'Avaliação',
-				items: [
-					'A instituição operacionaliza métricas sistemáticas para mensuração do impacto educacional dos sistemas de IA implementados.',
-					'Existe protocolo institucionalizado para identificação e mitigação de vieses algorítmicos nos sistemas de IA educacional.',
-					'Os benefícios e riscos associados aos sistemas de IA são documentados e comunicados formalmente à comunidade acadêmica.',
-					'São realizadas análises estratificadas sobre o impacto diferencial da IA em distintos grupos socioeconômicos discentes.',
-					'A eficácia pedagógica dos sistemas de IA é mensurada periodicamente através de indicadores objetivos validados.',
-					'Existe protocolo estabelecido para identificação e mitigação de consequências não intencionais decorrentes da implementação de IA.'
-				]
-			},
-			{
-				key: 'transparencia',
-				title: 'Transparência',
-				items: [
-					'As decisões algorítmicas são explicadas através de linguagem adequada aos diferentes públicos da comunidade acadêmica.',
-					'Existe documentação técnica acessível sobre a arquitetura e funcionamento dos algoritmos de IA institucionais.',
-					'Os datasets utilizados para treinamento e operação dos sistemas de IA são documentados e auditáveis.',
-					'As limitações técnicas e margens de erro dos sistemas de IA são formalmente comunicadas aos stakeholders.',
-					'Existem canais institucionalizados para questionamento e esclarecimento sobre decisões algorítmicas.',
-					'A instituição produz relatórios periódicos sobre implementação, uso e impacto dos sistemas de IA.'
-				]
-			},
-			{
-				key: 'centralidadeHumana',
-				title: 'Centralidade Humana',
-				items: [
-					'O corpo docente mantém autonomia decisória final sobre aspectos pedagógicos, independentemente de recomendações algorítmicas.',
-					'Discentes possuem mecanismos formais para contestação e solicitação de revisão humana de decisões algorítmicas.',
-					'Os sistemas de IA são arquitetados para augmentação de capacidades humanas, não substituição de agentes.',
-					'Existe protocolo institucional definindo categorias de decisões não passíveis de automação integral.',
-					'A autonomia intelectual e criatividade de docentes e discentes são preservadas nos processos mediados por IA.',
-					'Existem mecanismos técnicos e procedimentais para override ou desativação de sistemas de IA quando necessário.'
-				]
-			},
-			{
-				key: 'inclusao',
-				title: 'Inclusão',
-				items: [
-					'Os sistemas de IA são submetidos a testes com grupos demograficamente diversos previamente à implementação.',
-					'Pessoas com deficiência participam ativamente dos processos de desenvolvimento e avaliação dos sistemas de IA.',
-					'A instituição considera sistematicamente diferentes contextos socioeconômicos na implementação de soluções de IA.',
-					'Há representatividade de grupos minoritários nas instâncias decisórias sobre governança de IA.',
-					'Os sistemas de IA incorporam e valorizam epistemologias plurais e diferentes modalidades de aprendizagem.',
-					'Existem alternativas analógicas estruturadas para discentes sem acesso adequado à infraestrutura tecnológica.'
-				]
-			},
-			{
-				key: 'conformidade',
-				title: 'Conformidade',
-				items: [
-					'A instituição demonstra conformidade integral com a Lei Geral de Proteção de Dados (LGPD) no contexto de IA educacional.',
-					'Existe comitê de ética institucionalizado para avaliação e aprovação de projetos envolvendo IA.',
-					'Os instrumentos contratuais com fornecedores de soluções de IA incorporam cláusulas éticas e de responsabilização.',
-					'A instituição adere a frameworks nacionais e internacionais de governança ética em IA.',
-					'Existem protocolos estruturados de consentimento informado para utilização de dados em sistemas de IA.',
-					'São realizadas auditorias periódicas para verificação de conformidade legal e ética dos sistemas de IA.'
-				]
-			},
-			{
-				key: 'sustentabilidade',
-				title: 'Sustentabilidade',
-				items: [
-					'A instituição mensura e monitora o impacto ambiental (pegada carbônica) dos sistemas de IA implementados.',
-					'Existe planejamento estratégico para sustentabilidade tecnológica independente de fornecedores externos.',
-					'Os custos totais de propriedade (TCO) de longo prazo são considerados nas decisões de adoção de IA.',
-					'A instituição desenvolve sistematicamente capacidade técnica interna para manutenção e evolução de sistemas de IA.',
-					'O conhecimento institucional sobre IA é compartilhado através de redes colaborativas interinstitucionais.',
-					'Os sistemas de IA são alinhados estrategicamente com a missão institucional e objetivos educacionais de longo prazo.'
-				]
-			}
-		]
-	};
+function getFormConfig(id) {
+	return getInstrumento(id);
 }
 
 function submitResponse(payload) {
 	try {
-		validarPayload(payload);
+		const cfg = getInstrumento(payload && payload.instrumento);
+		validarPayload(cfg, payload);
 		const spreadsheet = getOrCreateSpreadsheet();
-		const rawSheet = getOrCreateSheet(spreadsheet, RAW_SHEET_NAME, [
-			'Timestamp', 'Email', 'Instituição', 'Região', 'Cargo',
-			...buildRawHeaders()
-		]);
-		const processedSheet = getOrCreateSheet(spreadsheet, PROCESSED_SHEET_NAME, [
-			'Timestamp', 'Email', 'Instituição', 'Região', 'Cargo',
-			'IGM', 'DP', 'CV', 'Faixa da escala', 'Nível (número)', 'Nível (nome)',
-			'Avaliação', 'Transparência', 'Centralidade Humana', 'Inclusão', 'Conformidade', 'Sustentabilidade',
-			'Ponto Forte (dim)', 'Ponto Forte (score)', 'Ponto Fraco (dim)', 'Ponto Fraco (score)',
-			'Percentil (respostas anteriores)', 'Quartil (respostas anteriores)', 'Base de comparação (n)', 'Versão da escala',
-			'IGM médio da instituição', 'Percentil (instituições)', 'Quartil (instituições)', 'Instituições comparadas (n)'
-		]);
+		const rawSheet = getOrCreateSheet(spreadsheet, cfg.abaRespostas, buildRawHeaders(cfg));
+		const processedSheet = getOrCreateSheet(spreadsheet, cfg.abaProcessado, buildProcessedHeaders(cfg));
 
-		const indices = computeIndices(payload.answers);
-		const igm = calcularIGM(indices);
-		const estatisticas = calcularEstatisticas(indices, igm);
-		const diagnostico = gerarDiagnostico(indices, estatisticas);
+		const resultado = calcularResultado(cfg, payload.answers);
 		// Calculado antes de gravar a linha atual, para não comparar a resposta consigo mesma.
-		diagnostico.comparacao = calcularPosicaoRelativa(processedSheet, igm, payload.instituicao);
+		resultado.diagnostico.comparacao = calcularPosicaoRelativa(cfg, processedSheet, resultado.igm, payload.organizacao);
 
-		appendRawRow(rawSheet, payload);
-		appendProcessedRow(processedSheet, payload, indices, igm, estatisticas, diagnostico);
+		appendRawRow(cfg, rawSheet, payload);
+		appendProcessedRow(cfg, processedSheet, payload, resultado);
 
 		const folder = getOrCreateReportsFolder();
-		const { docUrl, pdfUrl, pdfBlob } = gerarRelatorioPDF(folder, payload, indices, igm, estatisticas, diagnostico);
+		const { docUrl, pdfUrl, pdfBlob } = gerarRelatorioPDF(cfg, folder, payload, resultado);
 
-		enviarEmailRelatorio(payload.email, pdfUrl, docUrl, pdfBlob, igm, diagnostico);
+		enviarEmailRelatorio(cfg, payload.email, pdfUrl, docUrl, pdfBlob, resultado);
 
-		return {
-			indices: indices,
-			igm: igm,
-			estatisticas: estatisticas,
-			diagnostico: diagnostico,
-			docUrl: docUrl,
-			pdfUrl: pdfUrl
-		};
+		resultado.docUrl = docUrl;
+		resultado.pdfUrl = pdfUrl;
+		return resultado;
 	} catch (err) {
 		throw new Error('Falha ao processar resposta: ' + (err && err.message ? err.message : err));
 	}
 }
 
-function validarPayload(payload) {
+function validarPayload(cfg, payload) {
 	if (!payload || !payload.answers) throw new Error('Respostas ausentes.');
 	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(payload.email || '').trim())) {
 		throw new Error('E-mail inválido.');
 	}
-	if (!String(payload.instituicao || '').trim()) throw new Error('Instituição não informada.');
-	const cfg = getFormConfig();
+	if (!String(payload.organizacao || '').trim()) throw new Error(cfg.organizacao.rotulo + ' não informada.');
+	cfg.perfil.forEach(function(campo) {
+		const valor = payload.perfil && payload.perfil[campo.campo];
+		if (campo.opcoes.indexOf(valor) < 0) throw new Error('Campo "' + campo.rotulo + '" inválido.');
+	});
 	cfg.dimensoes.forEach(function(dim) {
 		const valores = payload.answers[dim.key] || [];
 		if (valores.length !== dim.items.length) {
 			throw new Error('Respostas incompletas na dimensão ' + dim.title + '.');
 		}
 		valores.forEach(function(v) {
-			const n = parseInt(v, 10);
-			if (!(n >= 1 && n <= 5)) throw new Error('Valor fora da escala 1–5 na dimensão ' + dim.title + '.');
+			if (!opcaoEscala(cfg, v)) throw new Error('Resposta fora da escala na dimensão ' + dim.title + '.');
 		});
 	});
 }
 
-function labelDimensao(key) {
-	const dim = getFormConfig().dimensoes.filter(function(d) { return d.key === key; })[0];
+function opcaoEscala(cfg, valor) {
+	return cfg.escala.filter(function(o) { return o.value === String(valor); })[0];
+}
+
+function textoItem(item) {
+	return typeof item === 'string' ? item : item.texto;
+}
+
+function labelDimensao(cfg, key) {
+	const dim = cfg.dimensoes.filter(function(d) { return d.key === key; })[0];
 	return dim ? dim.title : key;
 }
 
-function buildRawHeaders() {
-	const cfg = getFormConfig();
-	const headers = [];
+function buildRawHeaders(cfg) {
+	const headers = ['Timestamp', 'Email', cfg.organizacao.rotulo];
+	cfg.perfil.forEach(function(campo) { headers.push(campo.rotulo); });
 	cfg.dimensoes.forEach(function(dim) {
 		dim.items.forEach(function(_, idx) {
 			headers.push(dim.title + ' - Q' + (idx + 1));
@@ -189,105 +104,247 @@ function buildRawHeaders() {
 	return headers;
 }
 
-function appendRawRow(sheet, payload) {
-	const cfg = getFormConfig();
-	const row = [
-		new Date(), payload.email, payload.instituicao, payload.regiao, payload.cargo
-	];
+// A ordem das colunas só cresce no final, para manter planilhas antigas compatíveis.
+function buildProcessedHeaders(cfg) {
+	const org = cfg.organizacao;
+	const orgPlural = org.plural.charAt(0).toUpperCase() + org.plural.slice(1);
+	const headers = ['Timestamp', 'Email', org.rotulo];
+	cfg.perfil.forEach(function(campo) { headers.push(campo.rotulo); });
+	headers.push('IGM', 'DP', 'CV', 'Faixa da escala', 'Nível (número)', 'Nível (nome)');
+	cfg.dimensoes.forEach(function(dim) { headers.push(dim.title); });
+	headers.push(
+		'Ponto Forte (dim)', 'Ponto Forte (score)', 'Ponto Fraco (dim)', 'Ponto Fraco (score)',
+		'Percentil (respostas anteriores)', 'Quartil (respostas anteriores)', 'Base de comparação (n)', 'Versão da escala',
+		'IGM médio da ' + org.singular, 'Percentil (' + org.plural + ')', 'Quartil (' + org.plural + ')', orgPlural + ' comparadas (n)',
+		'Respostas "Não sei" (%)', 'Respostas "Não se aplica" (%)', 'Itens no plano de ação (n)'
+	);
+	return headers;
+}
+
+function appendRawRow(cfg, sheet, payload) {
+	const row = [new Date(), payload.email, payload.organizacao];
+	cfg.perfil.forEach(function(campo) { row.push(payload.perfil[campo.campo]); });
 	cfg.dimensoes.forEach(function(dim) {
-		const valores = payload.answers[dim.key] || [];
+		const valores = payload.answers[dim.key];
 		for (var i = 0; i < dim.items.length; i++) {
-			row.push(parseInt(valores[i], 10));
+			const v = String(valores[i]);
+			row.push(isNaN(Number(v)) ? v : Number(v));
 		}
 	});
 	sheet.appendRow(row);
 }
 
-function appendProcessedRow(sheet, payload, indices, igm, estatisticas, diagnostico) {
-	var comparacaoResp = diagnostico.comparacao.respondentes;
-	var comparacaoInst = diagnostico.comparacao.instituicoes;
-	sheet.appendRow([
-		new Date(),
-		payload.email,
-		payload.instituicao,
-		payload.regiao,
-		payload.cargo,
-		igm,
-		estatisticas.desvioPadrao,
-		estatisticas.coeficienteVariacao,
-		diagnostico.faixa,
-		diagnostico.nivel.numero,
-		diagnostico.nivel.nome,
-		indices.avaliacao,
-		indices.transparencia,
-		indices.centralidadeHumana,
-		indices.inclusao,
-		indices.conformidade,
-		indices.sustentabilidade,
-		diagnostico.pontoForte[0], diagnostico.pontoForte[1],
-		diagnostico.pontoFraco[0], diagnostico.pontoFraco[1],
-		comparacaoResp.disponivel ? comparacaoResp.percentil : '',
-		comparacaoResp.disponivel ? comparacaoResp.quartil : '',
-		comparacaoResp.n,
+function appendProcessedRow(cfg, sheet, payload, r) {
+	const d = r.diagnostico;
+	const resp = d.comparacao.respondentes;
+	const org = d.comparacao.organizacoes;
+	const row = [new Date(), payload.email, payload.organizacao];
+	cfg.perfil.forEach(function(campo) { row.push(payload.perfil[campo.campo]); });
+	row.push(r.igm, r.estatisticas.desvioPadrao, r.estatisticas.coeficienteVariacao, d.faixa, d.nivel.numero, d.nivel.nome);
+	cfg.dimensoes.forEach(function(dim) {
+		row.push(r.indices[dim.key] === null ? '' : r.indices[dim.key]);
+	});
+	row.push(
+		d.pontoForte[0], d.pontoForte[1], d.pontoFraco[0], d.pontoFraco[1],
+		resp.disponivel ? resp.percentil : '', resp.disponivel ? resp.quartil : '', resp.n,
 		ESCALA_VERSAO,
-		comparacaoInst.igmInstituicao,
-		comparacaoInst.disponivel ? comparacaoInst.percentil : '',
-		comparacaoInst.disponivel ? comparacaoInst.quartil : '',
-		comparacaoInst.n
-	]);
+		org.igmOrganizacao, org.disponivel ? org.percentil : '', org.disponivel ? org.quartil : '', org.n,
+		Math.round(r.contagem.ns / r.contagem.total * 100),
+		Math.round(r.contagem.na / r.contagem.total * 100),
+		r.planoAcao ? r.planoAcao.length : ''
+	);
+	sheet.appendRow(row);
 }
 
-// Posição do IGM em relação às respostas já gravadas na escala atual, de duas formas:
-// - respondentes: cada resposta anterior conta uma vez;
-// - instituicoes: média do IGM por instituição, comparando a instituição atual
-//   (incluindo esta resposta) com as demais.
-function calcularPosicaoRelativa(sheet, igm, instituicao) {
-	var anteriores = [];
-	var porInstituicao = {};
-	if (sheet.getLastRow() > 1) {
-		var dados = sheet.getDataRange().getValues();
-		var cab = dados[0];
-		var colIgm = cab.indexOf('IGM');
-		var colInst = cab.indexOf('Instituição');
-		var colEscala = cab.indexOf('Versão da escala');
-		for (var i = 1; i < dados.length; i++) {
-			var valor = dados[i][colIgm];
-			if (colEscala >= 0 && dados[i][colEscala] === ESCALA_VERSAO && typeof valor === 'number') {
-				anteriores.push(valor);
-				var chave = normalizarInstituicao(dados[i][colInst]);
-				(porInstituicao[chave] = porInstituicao[chave] || []).push(valor);
-			}
-		}
+// Converte as respostas em índices 0-100 por dimensão. "Não sei" e "Não se aplica"
+// não entram na média; uma dimensão sem nenhuma resposta válida fica sem índice (null).
+function calcularResultado(cfg, answers) {
+	const indices = {};
+	const contagem = { total: 0, ns: 0, na: 0 };
+	const itens = [];
+	cfg.dimensoes.forEach(function(dim) {
+		const scores = [];
+		answers[dim.key].forEach(function(valor, idx) {
+			const opcao = opcaoEscala(cfg, valor);
+			contagem.total++;
+			if (opcao.score === null) contagem[opcao.tipo]++;
+			else scores.push(opcao.score);
+			itens.push({ dim: dim, item: dim.items[idx], opcao: opcao });
+		});
+		indices[dim.key] = scores.length ? media(scores) : null;
+	});
+
+	const valores = cfg.dimensoes
+		.map(function(dim) { return indices[dim.key]; })
+		.filter(function(v) { return v !== null; });
+	if (!valores.length) {
+		throw new Error('Nenhuma resposta válida: todas foram "Não sei" ou "Não se aplica".');
 	}
-
-	var chaveAtual = normalizarInstituicao(instituicao);
-	var daAtual = (porInstituicao[chaveAtual] || []).concat([igm]);
-	var igmInstituicao = media(daAtual);
-	var outras = Object.keys(porInstituicao)
-		.filter(function(k) { return k !== chaveAtual; })
-		.map(function(k) { return media(porInstituicao[k]); });
-
-	var porInst = calcularPercentil(outras, igmInstituicao, MIN_INSTITUICOES_COMPARACAO);
-	porInst.igmInstituicao = igmInstituicao;
-	porInst.respostasDaInstituicao = daAtual.length;
-
+	const igm = media(valores);
+	const estatisticas = calcularEstatisticas(valores, igm);
 	return {
-		respondentes: calcularPercentil(anteriores, igm, MIN_RESPOSTAS_COMPARACAO),
-		instituicoes: porInst
+		indices: indices,
+		igm: igm,
+		estatisticas: estatisticas,
+		diagnostico: gerarDiagnostico(cfg, indices, estatisticas),
+		contagem: contagem,
+		alertaNaoSei: contagem.ns / contagem.total > LIMITE_NAO_SEI,
+		planoAcao: gerarPlanoAcao(cfg, itens)
 	};
-}
-
-// "UFMG ", "ufmg" e "Ufmg" contam como a mesma instituição. Siglas e nomes por
-// extenso ("Universidade Federal de Minas Gerais") continuam sendo diferentes.
-function normalizarInstituicao(nome) {
-	return String(nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-		.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 function media(valores) {
 	var soma = 0;
 	for (var i = 0; i < valores.length; i++) soma += valores[i];
 	return soma / valores.length;
+}
+
+function calcularEstatisticas(valores, igm) {
+	var sq = 0;
+	for (var i = 0; i < valores.length; i++) {
+		sq += Math.pow(valores[i] - igm, 2);
+	}
+	var desvioPadrao = Math.sqrt(sq / valores.length);
+	return {
+		media: igm,
+		desvioPadrao: desvioPadrao,
+		coeficienteVariacao: igm > 0 ? (desvioPadrao / igm) * 100 : 0,
+		min: Math.min.apply(null, valores),
+		max: Math.max.apply(null, valores),
+		amplitude: Math.max.apply(null, valores) - Math.min.apply(null, valores)
+	};
+}
+
+function gerarDiagnostico(cfg, indices, estatisticas) {
+	var entries = Object.keys(indices)
+		.filter(function(k) { return indices[k] !== null; })
+		.map(function(k) { return [k, indices[k]]; })
+		.sort(function(a, b) { return b[1] - a[1]; });
+	return {
+		pontoForte: entries[0],
+		pontoFraco: entries[entries.length - 1],
+		assimetria: estatisticas.coeficienteVariacao > 20,
+		nivel: getNivelMaturidade(cfg, estatisticas.media),
+		faixa: calcularFaixaEscala(estatisticas.media)
+	};
+}
+
+function getNivelMaturidade(cfg, score) {
+	for (var i = 0; i < cfg.niveis.length; i++) {
+		if (score >= cfg.niveis[i].min) return { numero: cfg.niveis[i].numero, nome: cfg.niveis[i].nome };
+	}
+	return { numero: cfg.niveis[cfg.niveis.length - 1].numero, nome: cfg.niveis[cfg.niveis.length - 1].nome };
+}
+
+function classificar(score) {
+	if (score >= 80) return 'Referência';
+	if (score >= 70) return 'Adequado';
+	if (score >= 50) return 'Em Desenvolvimento';
+	return 'Crítico';
+}
+
+// Posição do score dentro da própria escala 0-100 (quartos da escala).
+// Não é um quartil populacional: não compara com outras organizações.
+function calcularFaixaEscala(score) {
+	if (score >= 75) return '4º quarto da escala (75–100)';
+	if (score >= 50) return '3º quarto da escala (50–75)';
+	if (score >= 25) return '2º quarto da escala (25–50)';
+	return '1º quarto da escala (0–25)';
+}
+
+// Lista do que falta, por item, para instrumentos que definem metaItem e uma ação por pergunta.
+function gerarPlanoAcao(cfg, itens) {
+	if (!cfg.metaItem) return null;
+	var ordem = { 'Alta': 0, 'Média': 1, 'Verificar': 2 };
+	return itens
+		.filter(function(it) {
+			if (it.opcao.tipo === 'ns') return true;
+			return it.opcao.score !== null && it.opcao.score < cfg.metaItem;
+		})
+		.map(function(it) {
+			var prioridade = it.opcao.tipo === 'ns' ? 'Verificar' : (it.opcao.score <= 25 ? 'Alta' : 'Média');
+			return {
+				prioridade: prioridade,
+				dimensao: it.dim.title,
+				texto: textoItem(it.item),
+				situacao: it.opcao.label,
+				acao: it.item.acao || '',
+				ref: it.item.ref || ''
+			};
+		})
+		.sort(function(a, b) { return ordem[a.prioridade] - ordem[b.prioridade]; });
+}
+
+function gerarInterpretacao(cfg, indices, diagnostico, estatisticas) {
+	var aviso = ' ' + cfg.avisos[0];
+	if (estatisticas.amplitude === 0) {
+		return 'Todas as dimensões obtiveram o mesmo score (' + estatisticas.media.toFixed(1) + ').' + aviso;
+	}
+	var texto = 'Os resultados indicam ' + identificarPadrao(cfg, indices) + '. ' +
+		'A dimensão mais desenvolvida é ' + labelDimensao(cfg, diagnostico.pontoForte[0]) +
+		' (' + diagnostico.pontoForte[1].toFixed(1) + ') e a menos desenvolvida é ' +
+		labelDimensao(cfg, diagnostico.pontoFraco[0]) + ' (' + diagnostico.pontoFraco[1].toFixed(1) +
+		'), uma amplitude de ' + estatisticas.amplitude.toFixed(1) + ' pontos.';
+	if (diagnostico.assimetria) {
+		texto += ' O coeficiente de variação acima de 20% sinaliza desenvolvimento assimétrico entre as dimensões.';
+	}
+	return texto + aviso;
+}
+
+function identificarPadrao(cfg, indices) {
+	for (var i = 0; i < cfg.padroes.length; i++) {
+		var p = cfg.padroes[i];
+		var a = indices[p.acima], b = indices[p.abaixo];
+		if (a !== null && b !== null && a > b + p.margem) return p.texto;
+	}
+	return cfg.padraoGeral;
+}
+
+// Posição do IGM em relação às respostas já gravadas na escala atual, de duas formas:
+// - respondentes: cada resposta anterior conta uma vez;
+// - organizacoes: média do IGM por organização, comparando a organização atual
+//   (incluindo esta resposta) com as demais.
+function calcularPosicaoRelativa(cfg, sheet, igm, organizacao) {
+	var anteriores = [];
+	var porOrganizacao = {};
+	if (sheet.getLastRow() > 1) {
+		var dados = sheet.getDataRange().getValues();
+		var cab = dados[0];
+		var colIgm = cab.indexOf('IGM');
+		var colOrg = cab.indexOf(cfg.organizacao.rotulo);
+		var colEscala = cab.indexOf('Versão da escala');
+		for (var i = 1; i < dados.length; i++) {
+			var valor = dados[i][colIgm];
+			if (colEscala >= 0 && dados[i][colEscala] === ESCALA_VERSAO && typeof valor === 'number') {
+				anteriores.push(valor);
+				var chave = normalizarNome(dados[i][colOrg]);
+				(porOrganizacao[chave] = porOrganizacao[chave] || []).push(valor);
+			}
+		}
+	}
+
+	var chaveAtual = normalizarNome(organizacao);
+	var daAtual = (porOrganizacao[chaveAtual] || []).concat([igm]);
+	var igmOrganizacao = media(daAtual);
+	var outras = Object.keys(porOrganizacao)
+		.filter(function(k) { return k !== chaveAtual; })
+		.map(function(k) { return media(porOrganizacao[k]); });
+
+	var porOrg = calcularPercentil(outras, igmOrganizacao, MIN_ORGANIZACOES_COMPARACAO);
+	porOrg.igmOrganizacao = igmOrganizacao;
+	porOrg.respostasDaOrganizacao = daAtual.length;
+
+	return {
+		respondentes: calcularPercentil(anteriores, igm, MIN_RESPOSTAS_COMPARACAO),
+		organizacoes: porOrg
+	};
+}
+
+// "UFMG ", "ufmg" e "Ufmg" contam como a mesma organização. Siglas e nomes por
+// extenso ("Universidade Federal de Minas Gerais") continuam sendo diferentes.
+function normalizarNome(nome) {
+	return String(nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+		.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 function calcularPercentil(anteriores, igm, minimo) {
@@ -312,142 +369,15 @@ function descreverComparacaoRespondentes(c) {
 	return 'Percentil ' + c.percentil + ' (' + c.quartil + ') em relação a ' + c.n + ' respostas anteriores.';
 }
 
-function descreverComparacaoInstituicoes(c) {
-	var base = 'IGM médio da instituição: ' + c.igmInstituicao.toFixed(1) + ' (' + c.respostasDaInstituicao +
-		(c.respostasDaInstituicao === 1 ? ' resposta). ' : ' respostas). ');
+function descreverComparacaoOrganizacoes(cfg, c) {
+	var org = cfg.organizacao;
+	var base = 'IGM médio da ' + org.singular + ': ' + c.igmOrganizacao.toFixed(1) + ' (' + c.respostasDaOrganizacao +
+		(c.respostasDaOrganizacao === 1 ? ' resposta). ' : ' respostas). ');
 	if (!c.disponivel) {
-		return base + 'Comparação indisponível: são necessárias ao menos ' + MIN_INSTITUICOES_COMPARACAO +
-			' outras instituições (há ' + c.n + ').';
+		return base + 'Comparação indisponível: são necessárias ao menos ' + MIN_ORGANIZACOES_COMPARACAO +
+			' outras ' + org.plural + ' (há ' + c.n + ').';
 	}
-	return base + 'Percentil ' + c.percentil + ' (' + c.quartil + ') em relação a ' + c.n + ' outras instituições.';
-}
-
-function computeIndices(answers) {
-	function calcularIndice(valores) {
-		var soma = 0;
-		for (var i = 0; i < valores.length; i++) {
-			soma += parseInt(valores[i], 10);
-		}
-		return ((soma / valores.length) - 1) * 25; // converte a média 1-5 para 0-100
-	}
-	return {
-		avaliacao: calcularIndice(answers.avaliacao || []),
-		transparencia: calcularIndice(answers.transparencia || []),
-		centralidadeHumana: calcularIndice(answers.centralidadeHumana || []),
-		inclusao: calcularIndice(answers.inclusao || []),
-		conformidade: calcularIndice(answers.conformidade || []),
-		sustentabilidade: calcularIndice(answers.sustentabilidade || [])
-	};
-}
-
-function calcularIGM(indices) {
-	var valores = Object.values(indices);
-	var soma = 0;
-	for (var i = 0; i < valores.length; i++) soma += valores[i];
-	return soma / valores.length;
-}
-
-function calcularEstatisticas(indices, igm) {
-	var valores = Object.values(indices);
-	var sq = 0;
-	for (var i = 0; i < valores.length; i++) {
-		sq += Math.pow(valores[i] - igm, 2);
-	}
-	var desvioPadrao = Math.sqrt(sq / valores.length);
-	return {
-		media: igm,
-		desvioPadrao: desvioPadrao,
-		coeficienteVariacao: igm > 0 ? (desvioPadrao / igm) * 100 : 0,
-		min: Math.min.apply(null, valores),
-		max: Math.max.apply(null, valores),
-		amplitude: Math.max.apply(null, valores) - Math.min.apply(null, valores)
-	};
-}
-
-function gerarDiagnostico(indices, estatisticas) {
-	var entries = Object.entries(indices).sort(function(a, b) { return b[1] - a[1]; });
-	return {
-		pontoForte: entries[0],
-		pontoFraco: entries[entries.length - 1],
-		assimetria: estatisticas.coeficienteVariacao > 20,
-		nivel: getNivelMaturidade(estatisticas.media),
-		faixa: calcularFaixaEscala(estatisticas.media)
-	};
-}
-
-function getNivelMaturidade(score) {
-	if (score >= 81) return { numero: 5, nome: 'Referência - Excelência em Governança' };
-	if (score >= 61) return { numero: 4, nome: 'Avançado - Governança Estruturada' };
-	if (score >= 41) return { numero: 3, nome: 'Intermediário - Desenvolvimento Progressivo' };
-	if (score >= 21) return { numero: 2, nome: 'Básico - Estruturação Preliminar' };
-	return { numero: 1, nome: 'Inicial - Governança Incipiente' };
-}
-
-function classificar(score) {
-	if (score >= 80) return 'Referência';
-	if (score >= 70) return 'Adequado';
-	if (score >= 50) return 'Em Desenvolvimento';
-	return 'Crítico';
-}
-
-// Posição do score dentro da própria escala 0-100 (quartos da escala).
-// Não é um quartil populacional: não compara com outras instituições.
-function calcularFaixaEscala(score) {
-	if (score >= 75) return '4º quarto da escala (75–100)';
-	if (score >= 50) return '3º quarto da escala (50–75)';
-	if (score >= 25) return '2º quarto da escala (25–50)';
-	return '1º quarto da escala (0–25)';
-}
-
-function gerarInterpretacao(indices, diagnostico, estatisticas) {
-	if (estatisticas.amplitude === 0) {
-		return 'Todas as dimensões obtiveram o mesmo score (' + estatisticas.media.toFixed(1) + '). ' +
-			'Este diagnóstico reflete a percepção de um único respondente e deve ser interpretado em conjunto com outras fontes institucionais.';
-	}
-	var texto = 'Os resultados indicam ' + identificarPadrao(indices) + '. ' +
-		'A dimensão mais desenvolvida é ' + labelDimensao(diagnostico.pontoForte[0]) +
-		' (' + diagnostico.pontoForte[1].toFixed(1) + ') e a menos desenvolvida é ' +
-		labelDimensao(diagnostico.pontoFraco[0]) + ' (' + diagnostico.pontoFraco[1].toFixed(1) +
-		'), uma amplitude de ' + estatisticas.amplitude.toFixed(1) + ' pontos.';
-	if (diagnostico.assimetria) {
-		texto += ' O coeficiente de variação acima de 20% sinaliza desenvolvimento assimétrico entre as dimensões.';
-	}
-	texto += ' Este diagnóstico reflete a percepção de um único respondente e deve ser interpretado em conjunto com outras fontes institucionais.';
-	return texto;
-}
-
-function identificarPadrao(indices) {
-	if (indices.conformidade > indices.inclusao + 20) {
-		return 'maturidade técnico-normativa desenvolvida com lacunas socioculturais';
-	}
-	if (indices.transparencia > indices.sustentabilidade + 20) {
-		return 'foco em aspectos procedimentais com gaps em sustentabilidade';
-	}
-	return 'desenvolvimento equilibrado com oportunidades de melhoria sistêmica';
-}
-
-function gerarRecomendacoes(dimensao) {
-	var rec = {
-		avaliacao: '• Implementação de framework de métricas de impacto educacional\n• Estabelecimento de protocolos de auditoria algorítmica\n• Desenvolvimento de indicadores de equidade e justiça',
-		transparencia: '• Desenvolvimento de documentação técnica multinível\n• Criação de interfaces de explicabilidade algorítmica\n• Estabelecimento de canais de accountability',
-		centralidadeHumana: '• Fortalecimento de mecanismos de supervisão humana\n• Preservação da autonomia docente e discente\n• Implementação de protocolos de override',
-		inclusao: '• Incorporação de epistemologias plurais no design de sistemas\n• Implementação de testes com grupos demograficamente diversos\n• Estabelecimento de governança participativa inclusiva',
-		conformidade: '• Adequação integral aos marcos regulatórios (LGPD, AI Act)\n• Constituição de comitê de ética em IA\n• Desenvolvimento de framework de compliance',
-		sustentabilidade: '• Desenvolvimento de capacidade técnica institucional\n• Avaliação de impactos ambientais e sociais\n• Planejamento estratégico de longo prazo'
-	};
-	return rec[dimensao] || 'Desenvolvimento de plano de ação específico recomendado.';
-}
-
-function gerarCriteriosOperacionais(dimensao) {
-	var criterios = {
-		avaliacao: 'Primário: Auditabilidade Contínua | Secundário: Explicabilidade Algorítmica',
-		transparencia: 'Primário: Explicabilidade Algorítmica | Secundário: Participação Coletiva',
-		centralidadeHumana: 'Primário: Participação Coletiva | Secundário: Auditabilidade Contínua',
-		inclusao: 'Primário: Epistemologia Plural | Secundário: Participação Coletiva',
-		conformidade: 'Integração de todos os critérios operacionais do Modelo Contextual',
-		sustentabilidade: 'Desenvolvimento equilibrado dos quatro critérios operacionais'
-	};
-	return criterios[dimensao];
+	return base + 'Percentil ' + c.percentil + ' (' + c.quartil + ') em relação a ' + c.n + ' outras ' + org.plural + '.';
 }
 
 function getOrCreateSpreadsheet() {
@@ -487,47 +417,78 @@ function getOrCreateReportsFolder() {
 	return DriveApp.createFolder(REPORTS_FOLDER_NAME);
 }
 
-function gerarRelatorioPDF(folder, payload, indices, igm, estatisticas, diagnostico) {
-	var doc = DocumentApp.create('Relatório AME-IA - ' + payload.instituicao + ' - ' + new Date().toISOString());
+function gerarRelatorioPDF(cfg, folder, payload, r) {
+	var d = r.diagnostico;
+	var est = r.estatisticas;
+	var H2 = DocumentApp.ParagraphHeading.HEADING2;
+	var doc = DocumentApp.create(cfg.relatorioPrefixo + ' - ' + payload.organizacao + ' - ' + new Date().toISOString());
 	var body = doc.getBody();
-	body.appendParagraph('AME-IA | Diagnóstico Institucional - Modelo Contextual').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+	body.appendParagraph(cfg.relatorioTitulo).setHeading(DocumentApp.ParagraphHeading.HEADING1);
 	body.appendParagraph('Respondente: ' + payload.email);
-	body.appendParagraph('Instituição: ' + payload.instituicao + ' | Região: ' + payload.regiao + ' | Cargo: ' + payload.cargo);
+	body.appendParagraph([cfg.organizacao.rotulo + ': ' + payload.organizacao].concat(cfg.perfil.map(function(campo) {
+		return campo.rotulo + ': ' + payload.perfil[campo.campo];
+	})).join(' | '));
 	body.appendParagraph('');
-	body.appendParagraph('Índice Global de Maturidade (IGM): ' + estatisticas.media.toFixed(1) + ' / 100');
-	body.appendParagraph('Classificação: Nível ' + diagnostico.nivel.numero + ' - ' + diagnostico.nivel.nome);
-	body.appendParagraph('Posição na escala: ' + diagnostico.faixa);
-	body.appendParagraph('Comparação com outros respondentes: ' + descreverComparacaoRespondentes(diagnostico.comparacao.respondentes));
-	body.appendParagraph('Comparação com outras instituições: ' + descreverComparacaoInstituicoes(diagnostico.comparacao.instituicoes));
-	body.appendParagraph('As comparações usam apenas quem já respondeu ao questionário; não representam o conjunto das instituições do país.');
-	body.appendParagraph('CV: ' + estatisticas.coeficienteVariacao.toFixed(1) + '% | DP entre dimensões: ' + estatisticas.desvioPadrao.toFixed(1) + ' pontos');
+	body.appendParagraph('Índice Global de Maturidade (IGM): ' + est.media.toFixed(1) + ' / 100');
+	body.appendParagraph('Classificação: Nível ' + d.nivel.numero + ' - ' + d.nivel.nome);
+	body.appendParagraph('Posição na escala: ' + d.faixa);
+	body.appendParagraph('Comparação com outros respondentes: ' + descreverComparacaoRespondentes(d.comparacao.respondentes));
+	body.appendParagraph('Comparação com outras ' + cfg.organizacao.plural + ': ' + descreverComparacaoOrganizacoes(cfg, d.comparacao.organizacoes));
+	body.appendParagraph('As comparações usam apenas quem já respondeu ao questionário; não representam o conjunto das ' + cfg.organizacao.plural + ' do país.');
+	body.appendParagraph('CV: ' + est.coeficienteVariacao.toFixed(1) + '% | DP entre dimensões: ' + est.desvioPadrao.toFixed(1) + ' pontos');
+	if (r.contagem.ns || r.contagem.na) {
+		body.appendParagraph('Respostas "Não sei": ' + r.contagem.ns + ' de ' + r.contagem.total +
+			' | "Não se aplica": ' + r.contagem.na + ' de ' + r.contagem.total + ' (não entram na nota).');
+	}
+	if (r.alertaNaoSei) {
+		body.appendParagraph('Atenção: mais de ' + Math.round(LIMITE_NAO_SEI * 100) + '% das respostas foram "Não sei". ' +
+			'A nota é pouco confiável; isso também indica que a governança de IA é pouco visível para quem respondeu.');
+	}
 	body.appendParagraph('');
 
-	var tableData = [
-		['Dimensão', 'Score (0–100)', 'Classificação'],
-		['Avaliação', indices.avaliacao.toFixed(1), classificar(indices.avaliacao)],
-		['Transparência', indices.transparencia.toFixed(1), classificar(indices.transparencia)],
-		['Centralidade Humana', indices.centralidadeHumana.toFixed(1), classificar(indices.centralidadeHumana)],
-		['Inclusão', indices.inclusao.toFixed(1), classificar(indices.inclusao)],
-		['Conformidade', indices.conformidade.toFixed(1), classificar(indices.conformidade)],
-		['Sustentabilidade', indices.sustentabilidade.toFixed(1), classificar(indices.sustentabilidade)]
-	];
+	var tableData = [['Dimensão', 'Score (0–100)', 'Classificação']];
+	cfg.dimensoes.forEach(function(dim) {
+		var s = r.indices[dim.key];
+		tableData.push([dim.title, s === null ? 'sem dados' : s.toFixed(1), s === null ? '—' : classificar(s)]);
+	});
 	body.appendTable(tableData);
 	body.appendParagraph('');
 
-	body.appendParagraph('Análise Contextual').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-	body.appendParagraph('Ponto forte: ' + labelDimensao(diagnostico.pontoForte[0]) + ' (' + diagnostico.pontoForte[1].toFixed(1) + ')');
-	body.appendParagraph('Ponto fraco: ' + labelDimensao(diagnostico.pontoFraco[0]) + ' (' + diagnostico.pontoFraco[1].toFixed(1) + ')');
-	body.appendParagraph(gerarInterpretacao(indices, diagnostico, estatisticas));
+	body.appendParagraph('Análise').setHeading(H2);
+	body.appendParagraph('Ponto forte: ' + labelDimensao(cfg, d.pontoForte[0]) + ' (' + d.pontoForte[1].toFixed(1) + ')');
+	body.appendParagraph('Ponto fraco: ' + labelDimensao(cfg, d.pontoFraco[0]) + ' (' + d.pontoFraco[1].toFixed(1) + ')');
+	body.appendParagraph(gerarInterpretacao(cfg, r.indices, d, est));
 	body.appendParagraph('');
 
-	body.appendParagraph('Recomendações Estratégicas').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-	body.appendParagraph('Prioridade imediata - Dimensão ' + labelDimensao(diagnostico.pontoFraco[0]));
-	body.appendParagraph(gerarRecomendacoes(diagnostico.pontoFraco[0]));
-	body.appendParagraph('Critérios operacionais aplicáveis: ' + gerarCriteriosOperacionais(diagnostico.pontoFraco[0]));
-	body.appendParagraph('');
+	var dimFraca = cfg.dimensoes.filter(function(dim) { return dim.key === d.pontoFraco[0]; })[0];
+	if (dimFraca.recomendacoes) {
+		body.appendParagraph('Recomendações Estratégicas').setHeading(H2);
+		body.appendParagraph('Prioridade imediata - Dimensão ' + dimFraca.title);
+		body.appendParagraph(dimFraca.recomendacoes);
+		if (dimFraca.criterios) body.appendParagraph('Critérios operacionais aplicáveis: ' + dimFraca.criterios);
+		body.appendParagraph('');
+	}
 
-	body.appendParagraph('Próximos passos').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+	if (r.planoAcao) {
+		body.appendParagraph('Plano de ação').setHeading(H2);
+		if (!r.planoAcao.length) {
+			body.appendParagraph('Todos os itens respondidos estão no nível "praticado" ou acima. Próximo passo: medir e revisar periodicamente.');
+		} else {
+			body.appendParagraph('Itens abaixo do nível "praticado na maior parte da empresa", em ordem de prioridade. ' +
+				'Alta = não existe ou é informal; Média = definido por escrito, mas pouco praticado; Verificar = respondido como "Não sei".');
+			r.planoAcao.forEach(function(p, i) {
+				body.appendParagraph((i + 1) + '. [' + p.prioridade + '] ' + p.dimensao).setBold(true);
+				body.appendParagraph(p.texto).setBold(false);
+				body.appendParagraph('Situação atual: ' + p.situacao).setBold(false);
+				if (p.acao) body.appendParagraph('Próximo passo: ' + p.acao).setBold(false);
+				if (p.ref) body.appendParagraph('Referência: ' + p.ref).setBold(false);
+			});
+		}
+		body.appendParagraph('');
+	}
+
+	body.appendParagraph('Observações').setHeading(H2);
+	cfg.avisos.forEach(function(aviso) { body.appendParagraph(aviso); });
 	body.appendParagraph('Para relatório expandido, responda este email.');
 
 	doc.saveAndClose();
@@ -555,11 +516,12 @@ function compartilharComRespondente(file, email) {
 	}
 }
 
-function enviarEmailRelatorio(email, pdfUrl, docUrl, pdfBlob, igm, diagnostico) {
-	var subject = 'AME-IA | Diagnóstico Institucional - IGM: ' + Math.round(igm) + '/100';
+function enviarEmailRelatorio(cfg, email, pdfUrl, docUrl, pdfBlob, r) {
+	var subject = cfg.emailAssunto + ' - IGM: ' + Math.round(r.igm) + '/100';
 	var template = HtmlService.createTemplateFromFile('EmailTemplate');
-	template.igm = igm;
-	template.diagnostico = diagnostico;
+	template.intro = cfg.emailIntro;
+	template.igm = r.igm;
+	template.diagnostico = r.diagnostico;
 	template.docUrl = docUrl;
 	template.pdfUrl = pdfUrl;
 	var html = template.evaluate().getContent();
